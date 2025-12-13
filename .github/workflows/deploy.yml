@@ -1,21 +1,56 @@
-name: CD Deployment
+name: CD Workflow
 
+# Trigger: push de tags que empiecen con v*
 on:
   push:
-    tags:
-      - 'v*'
+    tags: [ 'v*' ]
 
 jobs:
-  deploy:
+  test-and-deploy:
+    name: Tests and Deploy
     runs-on: ubuntu-latest
 
+    env:
+      FLASK_ENV: production
+      SECRET_KEY: ${{ secrets.SECRET_KEY }}
+
     steps:
-      - name: Checkout repository
+
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to platform
-        env:
-          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
         run: |
-          echo "Deploy iniciado por William Saavedra"
-          curl -X POST "$DEPLOY_HOOK_URL"
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Deploy to Vercel
+        if: success() && env.VERCEL_TOKEN != ''
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        uses: amondnet/vercel-action@v20
+        with:
+          vercel-token: ${{ env.VERCEL_TOKEN }}
+          vercel-org-id: ${{ env.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ env.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+
+      - name: Deploy via Render webhook
+        if: success() && env.RENDER_DEPLOY_HOOK != ''
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: curl -X POST ${{ env.RENDER_DEPLOY_HOOK }}
+
+      - name: Notify deploy
+        if: success()
+        run: echo "Deployed tag $GITHUB_REF to production"
