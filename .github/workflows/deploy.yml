@@ -1,6 +1,5 @@
 name: CD Workflow
 
-# Trigger: push de tags que empiecen con v*
 on:
   push:
     tags: [ 'v*' ]
